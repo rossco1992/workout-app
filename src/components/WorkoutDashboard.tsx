@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkouts } from "@/hooks/useWorkouts";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +34,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { 
-  Calendar, 
   Clock, 
   Dumbbell, 
   Plus, 
@@ -45,49 +46,36 @@ import {
   Circle,
   Trash2,
   Edit,
-  MoreVertical
+  MoreVertical,
+  Calendar as CalendarIcon
 } from "lucide-react";
 import heroImage from "@/assets/hero-workout.jpg";
-
-interface Workout {
-  id: string;
-  name: string;
-  exercises: number;
-  duration: number;
-  difficulty: "Beginner" | "Intermediate" | "Advanced";
-  type: "Strength" | "Cardio" | "HIIT" | "Yoga";
-}
-
-interface ExerciseSet {
-  reps: number;
-  weight: number;
-  completed: boolean;
-}
-
-interface Exercise {
-  id: string;
-  name: string;
-  target: string;
-  sets: ExerciseSet[];
-  defaultSets: number;
-  defaultReps: number;
-}
-
-interface WorkoutHistory {
-  id: string;
-  date: string;
-  workoutName: string;
-  duration: number;
-  exercises: Exercise[];
-  completed: boolean;
-}
+import type { 
+  Workout, 
+  Exercise, 
+  WorkoutSession, 
+  ExerciseSet,
+  WorkoutWithExercises,
+  WorkoutSessionWithDetails
+} from "@/integrations/supabase/types";
 
 const WorkoutDashboard = () => {
   const { toast } = useToast();
-  const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
+  const { user, signOut } = useAuth();
+  const { 
+    workouts, 
+    workoutHistory, 
+    loading, 
+    error,
+    startWorkoutSession, 
+    completeWorkoutSession, 
+    saveExerciseSets,
+    loadWorkoutHistory
+  } = useWorkouts();
+  
+  const [activeWorkout, setActiveWorkout] = useState<WorkoutWithExercises | null>(null);
+  const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
-  const [workoutData, setWorkoutData] = useState<Exercise[]>([]);
-  const [workoutHistory, setWorkoutHistory] = useState<WorkoutHistory[]>([]);
   const [showCreateWorkout, setShowCreateWorkout] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [workoutToDelete, setWorkoutToDelete] = useState<Workout | null>(null);
@@ -101,114 +89,13 @@ const WorkoutDashboard = () => {
     exercises: [] as Exercise[]
   });
   
+  // Load workout history when user is authenticated
   useEffect(() => {
-    // Load workout history
-    const savedHistory = localStorage.getItem('workoutHistory');
-    if (savedHistory) {
-      setWorkoutHistory(JSON.parse(savedHistory));
+    if (user) {
+      loadWorkoutHistory(user.id);
     }
-    
-    // Check for deleted predefined workouts
-    const deletedWorkouts = localStorage.getItem('deletedWorkouts');
-    const deletedIds = deletedWorkouts ? JSON.parse(deletedWorkouts) : [];
-    
-    // Filter out deleted predefined workouts
-    if (deletedIds.length > 0) {
-      setWorkouts(prev => prev.filter(w => !deletedIds.includes(w.id)));
-    }
-    
-    // Load custom workouts and merge with predefined ones
-    const savedWorkouts = localStorage.getItem('customWorkouts');
-    if (savedWorkouts) {
-      const customWorkouts = JSON.parse(savedWorkouts);
-      setWorkouts(prev => {
-        // Only add custom workouts that don't already exist
-        const existingIds = prev.map(w => w.id);
-        const newCustomWorkouts = customWorkouts.filter((cw: Workout) => !existingIds.includes(cw.id));
-        return [...prev, ...newCustomWorkouts];
-      });
-    }
-
-    // Load scheduled workouts
-    const savedSchedule = localStorage.getItem('scheduledWorkouts');
-    if (savedSchedule) {
-      setScheduledWorkouts(JSON.parse(savedSchedule));
-    }
-  }, []);
-  const [workouts, setWorkouts] = useState<Workout[]>([
-    {
-      id: "1",
-      name: "Upper Body Blast",
-      exercises: 6,
-      duration: 45,
-      difficulty: "Intermediate",
-      type: "Strength"
-    },
-    {
-      id: "2", 
-      name: "Morning Cardio",
-      exercises: 4,
-      duration: 30,
-      difficulty: "Beginner",
-      type: "Cardio"
-    },
-    {
-      id: "3",
-      name: "HIIT Circuit",
-      exercises: 8,
-      duration: 25,
-      difficulty: "Advanced", 
-      type: "HIIT"
-    }
-  ]);
-
-  const createExerciseData = (workoutType: string, workoutName: string, workoutId?: string): Exercise[] => {
-    // Check if this is a custom workout
-    if (workoutId) {
-      const customWorkoutExercises = localStorage.getItem('customWorkoutExercises');
-      if (customWorkoutExercises) {
-        const exercisesData = JSON.parse(customWorkoutExercises);
-        if (exercisesData[workoutId]) {
-          return exercisesData[workoutId].map((ex: Exercise) => ({
-            ...ex,
-            sets: [] // Reset sets for new workout session
-          }));
-        }
-      }
-    }
-    if (workoutType === "Strength" && workoutName === "Upper Body Blast") {
-      return [
-        { id: "1", name: "Push-ups", target: "Chest, shoulders, triceps", sets: [], defaultSets: 3, defaultReps: 12 },
-        { id: "2", name: "Dumbbell Rows", target: "Back, biceps", sets: [], defaultSets: 3, defaultReps: 10 },
-        { id: "3", name: "Shoulder Press", target: "Shoulders, triceps", sets: [], defaultSets: 3, defaultReps: 8 },
-        { id: "4", name: "Bicep Curls", target: "Biceps", sets: [], defaultSets: 3, defaultReps: 12 },
-        { id: "5", name: "Tricep Dips", target: "Triceps", sets: [], defaultSets: 3, defaultReps: 10 },
-        { id: "6", name: "Plank", target: "Core stability", sets: [], defaultSets: 3, defaultReps: 30 }
-      ];
-    }
-    if (workoutType === "Cardio" && workoutName === "Morning Cardio") {
-      return [
-        { id: "1", name: "Warm-up Walk", target: "Cardio warm-up", sets: [], defaultSets: 1, defaultReps: 5 },
-        { id: "2", name: "Jogging", target: "Cardio endurance", sets: [], defaultSets: 1, defaultReps: 15 },
-        { id: "3", name: "Jumping Jacks", target: "High intensity", sets: [], defaultSets: 3, defaultReps: 30 },
-        { id: "4", name: "Cool-down Walk", target: "Recovery", sets: [], defaultSets: 1, defaultReps: 5 }
-      ];
-    }
-    if (workoutType === "HIIT" && workoutName === "HIIT Circuit") {
-      return [
-        { id: "1", name: "Burpees", target: "Full body explosive", sets: [], defaultSets: 3, defaultReps: 45 },
-        { id: "2", name: "Mountain Climbers", target: "Core and cardio", sets: [], defaultSets: 3, defaultReps: 45 },
-        { id: "3", name: "Jump Squats", target: "Lower body power", sets: [], defaultSets: 3, defaultReps: 45 },
-        { id: "4", name: "High Knees", target: "Cardio and legs", sets: [], defaultSets: 3, defaultReps: 45 },
-        { id: "5", name: "Push-up to T", target: "Upper body and core", sets: [], defaultSets: 3, defaultReps: 45 },
-        { id: "6", name: "Plank Jacks", target: "Core and cardio", sets: [], defaultSets: 3, defaultReps: 45 },
-        { id: "7", name: "Russian Twists", target: "Obliques and core", sets: [], defaultSets: 3, defaultReps: 45 },
-        { id: "8", name: "Sprint in Place", target: "Maximum intensity", sets: [], defaultSets: 3, defaultReps: 45 }
-      ];
-    }
-    return [];
-  };
-
+  }, [user, loadWorkoutHistory]);
+  
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case "Beginner": return "bg-success";
@@ -227,15 +114,39 @@ const WorkoutDashboard = () => {
     }
   };
 
-  const handleStartWorkout = (workoutName: string) => {
-    const selectedWorkout = workouts.find(w => w.name === workoutName);
-    if (selectedWorkout) {
-      const exerciseData = createExerciseData(selectedWorkout.type, selectedWorkout.name, selectedWorkout.id);
-      setActiveWorkout(selectedWorkout);
-      setWorkoutData(exerciseData);
+  const handleStartWorkout = async (workoutId: string) => {
+    if (!user) {
       toast({
-        title: "Starting Workout",
-        description: `Let's begin your ${workoutName} workout!`,
+        title: "Error",
+        description: "Please sign in to start a workout",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { session, exercises } = await startWorkoutSession(workoutId, user.id);
+      
+      const selectedWorkout = workouts.find(w => w.id === workoutId);
+      if (selectedWorkout) {
+        const workoutWithExercises: WorkoutWithExercises = {
+          ...selectedWorkout,
+          exercises: exercises
+        };
+        
+        setActiveWorkout(workoutWithExercises);
+        setActiveSession(session);
+        
+        toast({
+          title: "Starting Workout",
+          description: `Let's begin your ${selectedWorkout.name} workout!`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to start workout session",
+        variant: "destructive"
       });
     }
   };
@@ -263,29 +174,11 @@ const WorkoutDashboard = () => {
       return;
     }
     
-    const savedWorkouts = localStorage.getItem('customWorkouts');
-    const customWorkouts = savedWorkouts ? JSON.parse(savedWorkouts) : [];
-    
-    const workoutToSave: Workout = {
-      id: Date.now().toString(),
-      name: newWorkout.name,
-      exercises: newWorkout.exercises.length,
-      duration: newWorkout.duration,
-      difficulty: newWorkout.difficulty,
-      type: newWorkout.type
-    };
-    
-    customWorkouts.push(workoutToSave);
-    localStorage.setItem('customWorkouts', JSON.stringify(customWorkouts));
-    
-    // Also store the exercises data for this custom workout
-    const customWorkoutExercises = localStorage.getItem('customWorkoutExercises');
-    const exercisesData = customWorkoutExercises ? JSON.parse(customWorkoutExercises) : {};
-    exercisesData[workoutToSave.id] = newWorkout.exercises;
-    localStorage.setItem('customWorkoutExercises', JSON.stringify(exercisesData));
-    
-    // Update the workouts list
-    setWorkouts(prev => [...prev, workoutToSave]);
+    // TODO: Implement database workout creation
+    toast({
+      title: "Coming Soon",
+      description: "Custom workout creation will be implemented with the database!",
+    });
     
     setNewWorkout({
       name: "",
@@ -295,21 +188,18 @@ const WorkoutDashboard = () => {
       exercises: []
     });
     setShowCreateWorkout(false);
-    
-    toast({
-      title: "Workout Created",
-      description: `${newWorkout.name} has been saved to your workouts!`
-    });
   };
   
   const handleAddExerciseToWorkout = () => {
     const newExercise: Exercise = {
-      id: Date.now().toString(),
+      id: "",
       name: "",
-      target: "",
-      sets: [],
-      defaultSets: 3,
-      defaultReps: 10
+      description: "",
+      target_muscles: "",
+      equipment_needed: "",
+      exercise_type: "",
+      created_at: "",
+      updated_at: ""
     };
     
     setNewWorkout(prev => ({
@@ -341,40 +231,10 @@ const WorkoutDashboard = () => {
   const confirmDeleteWorkout = () => {
     if (!workoutToDelete) return;
 
-    // Remove from workouts list
-    setWorkouts(prev => prev.filter(w => w.id !== workoutToDelete.id));
-
-    // Check if this is a predefined workout
-    const predefinedIds = ["1", "2", "3"];
-    const isPredefined = predefinedIds.includes(workoutToDelete.id);
-
-    if (isPredefined) {
-      // Track deleted predefined workouts
-      const deletedWorkouts = localStorage.getItem('deletedWorkouts');
-      const deletedIds = deletedWorkouts ? JSON.parse(deletedWorkouts) : [];
-      deletedIds.push(workoutToDelete.id);
-      localStorage.setItem('deletedWorkouts', JSON.stringify(deletedIds));
-    } else {
-      // Update localStorage for custom workouts
-      const savedWorkouts = localStorage.getItem('customWorkouts');
-      if (savedWorkouts) {
-        const customWorkouts = JSON.parse(savedWorkouts);
-        const updatedWorkouts = customWorkouts.filter((w: Workout) => w.id !== workoutToDelete.id);
-        localStorage.setItem('customWorkouts', JSON.stringify(updatedWorkouts));
-      }
-
-      // Also remove exercise data for custom workouts
-      const customWorkoutExercises = localStorage.getItem('customWorkoutExercises');
-      if (customWorkoutExercises) {
-        const exercisesData = JSON.parse(customWorkoutExercises);
-        delete exercisesData[workoutToDelete.id];
-        localStorage.setItem('customWorkoutExercises', JSON.stringify(exercisesData));
-      }
-    }
-
+    // TODO: Implement database workout deletion
     toast({
-      title: "Workout Deleted",
-      description: `${workoutToDelete.name} has been removed.`
+      title: "Coming Soon",
+      description: "Workout deletion will be implemented with the database!",
     });
 
     setWorkoutToDelete(null);
@@ -405,9 +265,6 @@ const WorkoutDashboard = () => {
         updated[dateKey] = [];
       }
       updated[dateKey].push(newScheduledWorkout);
-      
-      // Save to localStorage
-      localStorage.setItem('scheduledWorkouts', JSON.stringify(updated));
       return updated;
     });
 
@@ -428,9 +285,6 @@ const WorkoutDashboard = () => {
           delete updated[dateKey];
         }
       }
-      
-      // Save to localStorage
-      localStorage.setItem('scheduledWorkouts', JSON.stringify(updated));
       return updated;
     });
 
@@ -462,7 +316,7 @@ const WorkoutDashboard = () => {
     
     // Filter workouts from this week
     const thisWeekWorkouts = workoutHistory.filter(workout => {
-      const workoutDate = new Date(workout.date);
+      const workoutDate = new Date(workout.started_at);
       return workoutDate >= startOfWeek && workoutDate <= now;
     });
 
@@ -470,7 +324,7 @@ const WorkoutDashboard = () => {
     const workoutCount = thisWeekWorkouts.length;
 
     // Calculate total time
-    const totalMinutes = thisWeekWorkouts.reduce((total, workout) => total + workout.duration, 0);
+    const totalMinutes = thisWeekWorkouts.reduce((total, workout) => total + (workout.actual_duration || 0), 0);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
     const totalTimeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
@@ -487,45 +341,76 @@ const WorkoutDashboard = () => {
     };
   };
 
-  const handleEndWorkout = () => {
-    if (activeWorkout && workoutData.length > 0) {
-      const workoutRecord: WorkoutHistory = {
-        id: Date.now().toString(),
-        date: new Date().toISOString(),
-        workoutName: activeWorkout.name,
-        duration: activeWorkout.duration,
-        exercises: workoutData,
-        completed: true
-      };
-      
-      const updatedHistory = [workoutRecord, ...workoutHistory];
-      setWorkoutHistory(updatedHistory);
-      localStorage.setItem('workoutHistory', JSON.stringify(updatedHistory));
+  const handleEndWorkout = async () => {
+    if (activeWorkout && user) {
+      try {
+        // Calculate actual duration (you can implement a timer for this)
+        const actualDuration = activeWorkout.estimated_duration; // For now, use estimated duration
+        
+        // Complete the workout session
+        if (activeSession) {
+          await completeWorkoutSession(
+            activeSession.id,
+            actualDuration,
+            "Great workout!", // Notes
+            5 // Rating
+          );
+        }
+        
+        // Reload workout history
+        await loadWorkoutHistory(user.id);
+        
+        toast({
+          title: "Workout Complete",
+          description: "Great job! Your workout has been saved to your history.",
+        });
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to complete workout",
+          variant: "destructive"
+        });
+      }
     }
     
     setActiveWorkout(null);
-    setWorkoutData([]);
     setSelectedExercise(null);
-    toast({
-      title: "Workout Complete",
-      description: "Great job! Your workout has been saved.",
-    });
   };
   
   const handleExerciseClick = (exercise: Exercise) => {
     setSelectedExercise(exercise);
   };
   
-  const handleSaveExerciseData = (exerciseId: string, sets: ExerciseSet[]) => {
-    setWorkoutData(prev => prev.map(ex => 
-      ex.id === exerciseId ? { ...ex, sets } : ex
-    ));
+  const handleSaveExerciseData = (exerciseId: string, sets: any[]) => {
+    // TODO: Implement saving exercise data to database
     setSelectedExercise(null);
     toast({
       title: "Exercise Updated",
       description: "Your set data has been saved.",
     });
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-lg">Loading workouts...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-destructive mb-4">Error loading workouts</p>
+          <p className="text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (activeWorkout) {
     return (
@@ -536,10 +421,10 @@ const WorkoutDashboard = () => {
               <h1 className="text-3xl font-bold mb-2">{activeWorkout.name}</h1>
               <div className="flex items-center gap-4 text-muted-foreground">
                 {getTypeIcon(activeWorkout.type)}
-                <span>{activeWorkout.exercises} exercises</span>
+                <span>{activeWorkout.exercises.length} exercises</span>
                 <span>•</span>
                 <Clock className="h-4 w-4" />
-                <span>{activeWorkout.duration} min</span>
+                <span>{activeWorkout.estimated_duration} min</span>
                 <Badge className={getDifficultyColor(activeWorkout.difficulty)}>
                   {activeWorkout.difficulty}
                 </Badge>
@@ -556,34 +441,21 @@ const WorkoutDashboard = () => {
                 <CardTitle>Workout Plan</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {workoutData.map((exercise, index) => {
-                  const completedSets = exercise.sets.filter(set => set.completed).length;
-                  const totalSets = Math.max(exercise.defaultSets, exercise.sets.length);
-                  
-                  return (
-                    <div 
-                      key={exercise.id} 
-                      className="p-4 border rounded-lg cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => handleExerciseClick(exercise)}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold">{index + 1}. {exercise.name}</h3>
-                        {completedSets === totalSets && totalSets > 0 && (
-                          <CheckCircle className="h-5 w-5 text-success" />
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-1">
-                        {exercise.defaultSets} sets × {exercise.defaultReps} {activeWorkout?.type === 'HIIT' ? 'seconds' : 'reps'}
-                      </p>
-                      <p className="text-sm mb-2">Target: {exercise.target}</p>
-                      {exercise.sets.length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          Progress: {completedSets}/{totalSets} sets completed
-                        </div>
-                      )}
+                {activeWorkout.exercises.map((exercise, index) => (
+                  <div 
+                    key={exercise.id} 
+                    className="p-4 border rounded-lg cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => handleExerciseClick(exercise)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold">{index + 1}. {exercise.name}</h3>
                     </div>
-                  );
-                })}
+                    <p className="text-sm text-muted-foreground mb-1">
+                      {exercise.target_muscles}
+                    </p>
+                    <p className="text-sm mb-2">Target: {exercise.target_muscles}</p>
+                  </div>
+                ))}
               </CardContent>
             </Card>
 
@@ -593,7 +465,7 @@ const WorkoutDashboard = () => {
               </CardHeader>
               <CardContent className="text-center space-y-6">
                 <div className="text-6xl font-bold text-primary">
-                  {activeWorkout.duration}:00
+                  {activeWorkout.estimated_duration}:00
                 </div>
                 <div className="space-y-4">
                   <Button size="lg" className="w-full">
@@ -617,17 +489,6 @@ const WorkoutDashboard = () => {
             </Card>
           </div>
           
-          <CreateWorkoutDialog 
-            open={showCreateWorkout}
-            workout={newWorkout}
-            onSave={handleSaveNewWorkout}
-            onClose={() => setShowCreateWorkout(false)}
-            onUpdateWorkout={setNewWorkout}
-            onAddExercise={handleAddExerciseToWorkout}
-            onUpdateExercise={handleUpdateExerciseInWorkout}
-            onRemoveExercise={handleRemoveExerciseFromWorkout}
-          />
-          
           <ExerciseDialog 
             exercise={selectedExercise}
             onSave={handleSaveExerciseData}
@@ -649,6 +510,24 @@ const WorkoutDashboard = () => {
         <div className="relative z-10 text-center text-white">
           <h1 className="text-4xl font-bold mb-2">FitTracker Pro</h1>
           <p className="text-xl opacity-90">Your personal workout companion</p>
+          
+          {/* User Profile */}
+          {user && (
+            <div className="mt-4 flex items-center justify-center gap-4">
+              <div className="text-center">
+                <p className="text-lg font-medium">Welcome back!</p>
+                <p className="text-sm opacity-90">{user.email}</p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={signOut}
+                className="bg-white/10 text-white border-white/20 hover:bg-white/20"
+              >
+                Sign Out
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -666,7 +545,7 @@ const WorkoutDashboard = () => {
                         <p className="text-sm text-muted-foreground">This Week</p>
                         <p className="text-2xl font-bold">{stats.workoutCount} Workout{stats.workoutCount !== 1 ? 's' : ''}</p>
                       </div>
-                      <Calendar className="h-8 w-8 text-primary" />
+                      <CalendarIcon className="h-8 w-8 text-primary" />
                     </div>
                   </CardContent>
                 </Card>
@@ -713,7 +592,7 @@ const WorkoutDashboard = () => {
             
             <Button variant="outline" size="lg" className="h-20" onClick={handleViewSchedule}>
               <div className="text-center">
-                <Calendar className="h-6 w-6 mx-auto mb-1" />
+                <CalendarIcon className="h-6 w-6 mx-auto mb-1" />
                 <span>View Schedule</span>
               </div>
             </Button>
@@ -747,10 +626,7 @@ const WorkoutDashboard = () => {
                         <h3 className="text-lg font-semibold mb-1">{workout.name}</h3>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           {getTypeIcon(workout.type)}
-                          <span>{workout.exercises} exercises</span>
-                          <span>•</span>
-                          <Clock className="h-4 w-4" />
-                          <span>{workout.duration} min</span>
+                          <span>{workout.estimated_duration} min</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -778,7 +654,7 @@ const WorkoutDashboard = () => {
                     
                     <Button 
                       className="w-full shadow-button hover:shadow-glow transition-all duration-300"
-                      onClick={() => handleStartWorkout(workout.name)}
+                      onClick={() => handleStartWorkout(workout.id)}
                     >
                       <Play className="h-4 w-4 mr-2" />
                       Start Workout
@@ -799,12 +675,12 @@ const WorkoutDashboard = () => {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="font-medium">{workout.workoutName}</h3>
+                        <h3 className="font-medium">{workout.session_name || 'Workout Session'}</h3>
                         <p className="text-sm text-muted-foreground">
-                          {new Date(workout.date).toLocaleDateString()} • {workout.duration} min
+                          {new Date(workout.started_at).toLocaleDateString()} • {workout.actual_duration || workout.workout?.estimated_duration || 0} min
                         </p>
                       </div>
-                      <Badge variant="outline">{workout.exercises.length} exercises</Badge>
+                      <Badge variant="outline">{workout.exercise_sets?.length || 0} exercises</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -1005,32 +881,8 @@ const CreateWorkoutDialog = ({
                       <div>
                         <Input
                           placeholder="Target muscles"
-                          value={exercise.target}
-                          onChange={(e) => onUpdateExercise(exercise.id, { target: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs text-muted-foreground">Sets</label>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={exercise.defaultSets}
-                          onChange={(e) => onUpdateExercise(exercise.id, { defaultSets: parseInt(e.target.value) || 3 })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-muted-foreground">
-                          {workout.type === 'HIIT' ? 'Seconds' : 'Reps'}
-                        </label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={exercise.defaultReps}
-                          onChange={(e) => onUpdateExercise(exercise.id, { defaultReps: parseInt(e.target.value) || 10 })}
+                          value={exercise.target_muscles}
+                          onChange={(e) => onUpdateExercise(exercise.id, { target_muscles: e.target.value })}
                         />
                       </div>
                     </div>
@@ -1057,29 +909,27 @@ const CreateWorkoutDialog = ({
 
 interface ExerciseDialogProps {
   exercise: Exercise | null;
-  onSave: (exerciseId: string, sets: ExerciseSet[]) => void;
+  onSave: (exerciseId: string, sets: any[]) => void;
   onClose: () => void;
 }
 
 const ExerciseDialog = ({ exercise, onSave, onClose }: ExerciseDialogProps) => {
-  const [sets, setSets] = useState<ExerciseSet[]>([]);
+  const [sets, setSets] = useState<any[]>([]);
 
   React.useEffect(() => {
     if (exercise) {
-      if (exercise.sets.length > 0) {
-        setSets(exercise.sets);
-      } else {
-        const initialSets = Array.from({ length: exercise.defaultSets }, () => ({
-          reps: exercise.defaultReps,
-          weight: 0,
-          completed: false
-        }));
-        setSets(initialSets);
-      }
+      // Initialize with default sets
+      const initialSets = Array.from({ length: 3 }, (_, index) => ({
+        setNumber: index + 1,
+        reps: 10,
+        weight: 0,
+        completed: false
+      }));
+      setSets(initialSets);
     }
   }, [exercise]);
 
-  const updateSet = (index: number, field: keyof ExerciseSet, value: number | boolean) => {
+  const updateSet = (index: number, field: string, value: any) => {
     setSets(prev => prev.map((set, i) => 
       i === index ? { ...set, [field]: value } : set
     ));
@@ -1087,7 +937,8 @@ const ExerciseDialog = ({ exercise, onSave, onClose }: ExerciseDialogProps) => {
 
   const addSet = () => {
     setSets(prev => [...prev, {
-      reps: exercise?.defaultReps || 10,
+      setNumber: prev.length + 1,
+      reps: 10,
       weight: 0,
       completed: false
     }]);
@@ -1113,12 +964,12 @@ const ExerciseDialog = ({ exercise, onSave, onClose }: ExerciseDialogProps) => {
         </DialogHeader>
         
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">Target: {exercise.target}</p>
+          <p className="text-sm text-muted-foreground">Target: {exercise.target_muscles}</p>
           
           <div className="space-y-3">
             {sets.map((set, index) => (
               <div key={index} className="flex items-center gap-2 p-3 border rounded-lg">
-                <span className="text-sm font-medium w-12">Set {index + 1}</span>
+                <span className="text-sm font-medium w-12">Set {set.setNumber}</span>
                 
                 <div className="flex items-center gap-2">
                   <Input
@@ -1245,19 +1096,6 @@ const ScheduleDialog = ({
               onSelect={onSelectDate}
               disabled={(date) => date < today}
               className="rounded-md border"
-              modifiers={{
-                scheduled: (date) => {
-                  const dateKey = formatDateKey(date);
-                  return !!scheduledWorkouts[dateKey]?.length;
-                }
-              }}
-              modifiersStyles={{
-                scheduled: {
-                  backgroundColor: 'rgb(34 197 94)',
-                  color: 'white',
-                  fontWeight: 'bold'
-                }
-              }}
             />
           </div>
 
@@ -1312,7 +1150,7 @@ const ScheduleDialog = ({
                       <SelectContent>
                         {workouts.map((workout) => (
                           <SelectItem key={workout.id} value={workout.id}>
-                            {workout.name} ({workout.duration}min)
+                            {workout.name} ({workout.estimated_duration}min)
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1329,7 +1167,7 @@ const ScheduleDialog = ({
                       disabled={!selectedWorkout}
                       className="w-full"
                     >
-                      <Calendar className="h-4 w-4 mr-2" />
+                      <CalendarIcon className="h-4 w-4 mr-2" />
                       Schedule Workout
                     </Button>
                   </div>

@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Dumbbell } from "lucide-react";
+import AuthTest from "@/components/AuthTest";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -29,9 +30,11 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
 
+    console.log("Attempting sign up with:", { email, password: "***" });
+
     const redirectUrl = `${window.location.origin}/`;
     
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -39,13 +42,17 @@ const Auth = () => {
       }
     });
 
+    console.log("Sign up result:", { data, error });
+
     if (error) {
+      console.error("Sign up error:", error);
       toast({
         title: "Sign up error",
         description: error.message,
         variant: "destructive",
       });
     } else {
+      console.log("Sign up successful");
       toast({
         title: "Sign up successful",
         description: "Please check your email to confirm your account.",
@@ -58,18 +65,24 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    console.log("Attempting sign in with:", { email, password: "***" });
+
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
+    console.log("Sign in result:", { data, error });
+
     if (error) {
+      console.error("Sign in error:", error);
       toast({
         title: "Sign in error",
         description: error.message,
         variant: "destructive",
       });
     } else {
+      console.log("Sign in successful, navigating to /");
       navigate("/");
     }
     setLoading(false);
@@ -158,6 +171,9 @@ const Auth = () => {
           </Tabs>
         </CardContent>
       </Card>
+      
+      {/* Debug component - remove this after fixing auth */}
+      <AuthTest />
     </div>
   );
 };

@@ -143,8 +143,6 @@ const WorkoutDashboard = () => {
     }
 
     try {
-      console.log('Starting workout with ID:', workoutId);
-      
       // Get the workout details
       const selectedWorkout = workouts.find(w => w.id === workoutId);
       if (!selectedWorkout) {
@@ -155,8 +153,6 @@ const WorkoutDashboard = () => {
         });
         return;
       }
-      
-      console.log('Selected workout:', selectedWorkout);
       
       // Load workout exercises directly from the database
       const { data: workoutExercises, error: exercisesError } = await supabase
@@ -178,15 +174,11 @@ const WorkoutDashboard = () => {
         return;
       }
       
-      console.log('Workout exercises loaded:', workoutExercises);
-      
       // Transform the data to match the expected format
       const exercises = workoutExercises?.map(we => ({
         ...we.exercises,
         ...we
       })) || [];
-      
-      console.log('Transformed exercises:', exercises);
       
       // Create workout session
       const { data: session, error: sessionError } = await supabase
@@ -214,15 +206,12 @@ const WorkoutDashboard = () => {
         return;
       }
       
-      console.log('Workout session created:', session);
-      
       // Set the active workout with exercises
       const workoutWithExercises: WorkoutWithExercises = {
         ...selectedWorkout,
         exercises: exercises
       };
       
-      console.log('Setting active workout:', workoutWithExercises);
       setActiveWorkout(workoutWithExercises);
       setActiveSession(session);
       
@@ -298,16 +287,10 @@ const WorkoutDashboard = () => {
       
       const createdWorkout = await createWorkout(workoutData);
       
-      console.log('Workout created successfully:', createdWorkout);
-      
       // Create exercises and link them to the workout
       try {
-        console.log('Creating exercises for workout:', createdWorkout.id);
-        console.log('Exercises to create:', newWorkout.exercises);
-        
         for (let i = 0; i < newWorkout.exercises.length; i++) {
           const exerciseData = newWorkout.exercises[i];
-          console.log(`Creating exercise ${i + 1}:`, exerciseData);
           
           // Create the exercise
           const exercise = await supabase
@@ -324,11 +307,8 @@ const WorkoutDashboard = () => {
           
           if (exercise.error) {
             console.error('Error creating exercise:', exercise.error);
-            console.error('Exercise data that failed:', exerciseData);
             throw exercise.error;
           }
-          
-          console.log('Exercise created:', exercise.data);
           
           // Create the workout_exercise relationship
           const workoutExercise = await supabase
@@ -346,21 +326,10 @@ const WorkoutDashboard = () => {
           
           if (workoutExercise.error) {
             console.error('Error creating workout_exercise:', workoutExercise.error);
-            console.error('Workout exercise data that failed:', {
-              workout_id: createdWorkout.id,
-              exercise_id: exercise.data.id,
-              order_index: i + 1,
-              default_sets: exerciseData.default_sets || 3,
-              default_reps: exerciseData.default_reps || 10,
-              rest_time: 60
-            });
             throw workoutExercise.error;
           }
-          
-          console.log('Workout exercise created:', workoutExercise.data);
         }
         
-        console.log('All exercises created successfully');
         toast({
           title: "Success",
           description: "Workout created successfully with all exercises!",
@@ -881,155 +850,7 @@ const WorkoutDashboard = () => {
           </div>
         </div>
 
-        {/* Debug Info */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span>Debug Info</span>
-              <Badge variant="outline">Development</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>Workouts Loaded: <span className="font-mono">{workouts.length}</span></div>
-                <div>Loading: <span className="font-mono">{loading ? 'Yes' : 'No'}</span></div>
-                <div>Error: <span className="font-mono">{error || 'None'}</span></div>
-              </div>
-              
-              <div className="space-y-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={async () => {
-                    console.log('=== DEBUG: Current State ===');
-                    console.log('workouts array:', workouts);
-                    console.log('activeWorkout:', activeWorkout);
-                    console.log('activeSession:', activeSession);
-                    
-                    // Direct database query
-                    const { data: allWorkouts, error: workoutsError } = await supabase
-                      .from('workouts')
-                      .select('*');
-                    console.log('All workouts from DB:', allWorkouts, 'Error:', workoutsError);
-                    
-                    const { data: allExercises, error: exercisesError } = await supabase
-                      .from('exercises')
-                      .select('*');
-                    console.log('All exercises from DB:', allExercises, 'Error:', exercisesError);
-                    
-                    const { data: allWorkoutExercises, error: weError } = await supabase
-                      .from('workout_exercises')
-                      .select('*');
-                    console.log('All workout_exercises from DB:', allWorkoutExercises, 'Error:', weError);
-                    
-                    toast({
-                      title: "Debug Info Logged",
-                      description: "Check the console for detailed database information",
-                    });
-                  }}
-                >
-                  Debug Database State
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={async () => {
-                    if (workouts.length === 0) {
-                      toast({
-                        title: "No Workouts",
-                        description: "No workouts available to test",
-                        variant: "destructive"
-                      });
-                      return;
-                    }
-                    
-                    const firstWorkout = workouts[0];
-                    console.log('Testing first workout:', firstWorkout);
-                    
-                    const { data: workoutExercises, error } = await supabase
-                      .from('workout_exercises')
-                      .select(`
-                        *,
-                        exercises (*)
-                      `)
-                      .eq('workout_id', firstWorkout.id);
-                    
-                    console.log('Workout exercises query result:', workoutExercises, 'Error:', error);
-                    
-                    if (workoutExercises && workoutExercises.length > 0) {
-                      toast({
-                        title: "Exercises Found",
-                        description: `Found ${workoutExercises.length} exercises for ${firstWorkout.name}`,
-                      });
-                    } else {
-                      toast({
-                        title: "No Exercises Found",
-                        description: `No exercises found for ${firstWorkout.name}`,
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                >
-                  Test First Workout
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={async () => {
-                    console.log('Testing exercise creation...');
-                    
-                    try {
-                      const { data: exercise, error } = await supabase
-                        .from('exercises')
-                        .insert({
-                          name: 'Test Exercise',
-                          description: 'Test exercise for debugging',
-                          target_muscles: 'Test muscles',
-                          equipment_needed: 'None',
-                          exercise_type: 'Test'
-                        })
-                        .select()
-                        .single();
-                      
-                      if (error) {
-                        console.error('Exercise creation failed:', error);
-                        toast({
-                          title: "Exercise Creation Failed",
-                          description: error.message,
-                          variant: "destructive"
-                        });
-                      } else {
-                        console.log('Test exercise created:', exercise);
-                        toast({
-                          title: "Test Exercise Created",
-                          description: "Successfully created test exercise in database",
-                        });
-                        
-                        // Clean up - delete the test exercise
-                        await supabase
-                          .from('exercises')
-                          .delete()
-                          .eq('id', exercise.id);
-                      }
-                    } catch (err) {
-                      console.error('Unexpected error:', err);
-                      toast({
-                        title: "Unexpected Error",
-                        description: "An unexpected error occurred",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                >
-                  Test Exercise Creation
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Available Workouts */}

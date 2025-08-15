@@ -690,7 +690,19 @@ const WorkoutDashboard = () => {
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="text-lg font-semibold mb-1">{workout.name}</h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-lg font-semibold">{workout.name}</h3>
+                          {workout.is_template && (
+                            <Badge variant="outline" className="text-xs">
+                              Template
+                            </Badge>
+                          )}
+                          {!workout.is_template && (
+                            <Badge variant="secondary" className="text-xs">
+                              Custom
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           {getTypeIcon(workout.type)}
                           <span>{workout.estimated_duration} min</span>
@@ -707,13 +719,21 @@ const WorkoutDashboard = () => {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteWorkout(workout)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Workout
-                            </DropdownMenuItem>
+                            {!workout.is_template && (
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteWorkout(workout)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Workout
+                              </DropdownMenuItem>
+                            )}
+                            {workout.is_template && (
+                              <DropdownMenuItem className="text-muted-foreground">
+                                <Edit className="h-4 w-4 mr-2" />
+                                Template (Read-only)
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

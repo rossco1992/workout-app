@@ -16,6 +16,16 @@ export class WorkoutService {
     const { data, error } = await supabase
       .from('workouts')
       .select('*')
+      .order('name')
+    
+    if (error) throw error
+    return data || []
+  }
+
+  static async getTemplateWorkouts(): Promise<Workout[]> {
+    const { data, error } = await supabase
+      .from('workouts')
+      .select('*')
       .eq('is_template', true)
       .order('name')
     

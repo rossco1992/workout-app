@@ -298,6 +298,9 @@ const WorkoutDashboard = () => {
       
       const createdWorkout = await createWorkout(workoutData);
       
+      // Refresh data to include the new workout
+      await refreshData();
+      
       // Create exercises and link them to the workout
       try {
         console.log('Creating exercises for workout:', createdWorkout.id);
@@ -354,6 +357,10 @@ const WorkoutDashboard = () => {
           title: "Success",
           description: "Workout created successfully with all exercises!",
         });
+        
+        // Refresh the workouts data to include the newly created workout
+        await refreshData();
+        
       } catch (exerciseError) {
         console.error('Error creating exercises:', exerciseError);
         toast({

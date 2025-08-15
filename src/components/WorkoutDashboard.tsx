@@ -143,16 +143,7 @@ const WorkoutDashboard = () => {
     };
   }, [restTimerInterval]);
   
-  // Periodic refresh to keep data in sync across multiple windows/tabs
-  useEffect(() => {
-    if (user) {
-      const refreshInterval = setInterval(() => {
-        refreshData();
-      }, 30000); // Refresh every 30 seconds
-      
-      return () => clearInterval(refreshInterval);
-    }
-  }, [user, refreshData]);
+
   
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {

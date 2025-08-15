@@ -389,7 +389,7 @@ export type ScheduledWorkout = Database['public']['Tables']['scheduled_workouts'
 
 // Extended types for the app
 export type WorkoutWithExercises = Workout & {
-  exercises: (Exercise & WorkoutExercise)[]
+  exercises: ExerciseWithCompletion[]
 }
 
 export type WorkoutSessionWithDetails = WorkoutSession & {
@@ -406,4 +406,10 @@ export type ExerciseWithDefaults = Exercise & {
   default_sets?: number
   default_reps?: number
   default_weight?: number
+}
+
+// Extended Exercise type for workout tracking with completion status
+export type ExerciseWithCompletion = Exercise & WorkoutExercise & {
+  completed?: boolean
+  completedSets?: number
 }

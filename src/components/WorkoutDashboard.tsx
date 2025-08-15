@@ -60,7 +60,8 @@ import type {
   WorkoutWithExercises,
   WorkoutSessionWithDetails,
   ExerciseWithDefaults,
-  WorkoutExercise
+  WorkoutExercise,
+  ExerciseWithCompletion
 } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -266,7 +267,9 @@ const WorkoutDashboard = () => {
           default_sets: we.default_sets,
           default_reps: we.default_reps,
           rest_time: we.rest_time,
-          order_index: we.order_index
+          order_index: we.order_index,
+          completed: false, // Track completion status
+          completedSets: 0  // Track number of completed sets
         };
       }).filter(Boolean);
       
@@ -716,13 +719,73 @@ const WorkoutDashboard = () => {
     }
   };
   
-  const handleSaveExerciseData = (exerciseId: string, sets: any[]) => {
-    // TODO: Implement saving exercise data to database
-    setSelectedExercise(null);
-    toast({
-      title: "Exercise Updated",
-      description: "Your set data has been saved.",
-    });
+  const handleSaveExerciseData = async (exerciseId: string, sets: any[]) => {
+    if (!activeSession || !user) {
+      toast({
+        title: "Error",
+        description: "No active workout session found.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      // Filter only completed sets
+      const completedSets = sets.filter(set => set.completed);
+      
+      if (completedSets.length === 0) {
+        toast({
+          title: "No Sets Completed",
+          description: "Please mark at least one set as completed.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Prepare exercise sets data for database
+      const exerciseSetsData = completedSets.map(set => ({
+        session_id: activeSession.id,
+        exercise_id: exerciseId,
+        set_number: set.setNumber,
+        reps: set.reps,
+        weight: set.weight,
+        duration: null, // For time-based exercises
+        distance: null, // For cardio exercises
+        rest_time: null, // Will be calculated from rest timer
+        completed: true,
+        notes: null
+      }));
+
+      // Save to database using the saveExerciseSets function from useWorkouts
+      await saveExerciseSets(exerciseSetsData);
+
+      // Update the exercise in the active workout to show completion
+      setActiveWorkout(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          exercises: prev.exercises.map(ex => 
+            ex.id === exerciseId 
+              ? { ...ex, completed: true, completedSets: completedSets.length }
+              : ex
+          )
+        };
+      });
+
+      setSelectedExercise(null);
+      toast({
+        title: "Exercise Completed!",
+        description: `${completedSets.length} set(s) saved successfully.`,
+      });
+
+    } catch (error) {
+      console.error('Error saving exercise data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save exercise data. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   if (loading) {
@@ -782,11 +845,18 @@ const WorkoutDashboard = () => {
                 {activeWorkout.exercises.map((exercise, index) => (
                   <div 
                     key={exercise.id} 
-                    className="p-4 border rounded-lg cursor-pointer hover:shadow-md transition-shadow hover:bg-muted/50"
+                    className={`p-4 border rounded-lg cursor-pointer hover:shadow-md transition-shadow hover:bg-muted/50 ${
+                      exercise.completed ? 'border-green-500 bg-green-50' : ''
+                    }`}
                     onClick={() => handleExerciseClick(exercise)}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold">{index + 1}. {exercise.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{index + 1}. {exercise.name}</h3>
+                        {exercise.completed && (
+                          <CheckCircle className="h-5 w-5 text-green-600" />
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span>Sets: {exercise.default_sets || 3}</span>
                         <span>•</span>
@@ -807,8 +877,18 @@ const WorkoutDashboard = () => {
                         Equipment: {exercise.equipment_needed}
                       </p>
                     )}
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      Click to track your performance →
+                    <div className="flex items-center justify-between mt-2">
+                      <div className="text-xs text-muted-foreground">
+                        {exercise.completed 
+                          ? `Completed ${exercise.completedSets || 0} set(s)` 
+                          : 'Click to track your performance →'
+                        }
+                      </div>
+                      {exercise.completed && (
+                        <Badge variant="secondary" className="text-xs">
+                          ✓ Done
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 ))}

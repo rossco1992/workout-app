@@ -193,18 +193,22 @@ const WorkoutDashboard = () => {
         return;
       }
       
-      // Load workout exercises directly from the database
+      // Load workout exercises directly from the database - simplified approach
       const { data: workoutExercises, error: exercisesError } = await supabase
         .from('workout_exercises')
         .select(`
-          *,
-          exercises (*)
+          id,
+          order_index,
+          default_sets,
+          default_reps,
+          rest_time,
+          exercise_id
         `)
         .eq('workout_id', workoutId)
         .order('order_index');
       
       if (exercisesError) {
-        console.error('Error loading exercises:', exercisesError);
+        console.error('Error loading workout exercises:', exercisesError);
         toast({
           title: "Error",
           description: "Failed to load workout exercises",
@@ -213,20 +217,47 @@ const WorkoutDashboard = () => {
         return;
       }
       
-      // Transform the data to match the expected format
-      const exercises = workoutExercises?.map(we => {
-        if (!we.exercises) {
-          console.error('Exercise data missing for workout exercise:', we);
-          return null;
-        }
+      if (!workoutExercises || workoutExercises.length === 0) {
+        toast({
+          title: "No Exercises Found",
+          description: "This workout doesn't have any exercises assigned to it.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Get the exercise IDs
+      const exerciseIds = workoutExercises.map(we => we.exercise_id);
+      
+      // Load the actual exercise data
+      const { data: exercisesData, error: exercisesDataError } = await supabase
+        .from('exercises')
+        .select('*')
+        .in('id', exerciseIds);
+      
+      if (exercisesDataError) {
+        console.error('Error loading exercises data:', exercisesDataError);
+        toast({
+          title: "Error",
+          description: "Failed to load exercise details",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Combine the data
+      const exercises = workoutExercises.map(we => {
+        const exercise = exercisesData.find(e => e.id === we.exercise_id);
+        if (!exercise) return null;
+        
         return {
-          ...we.exercises,
+          ...exercise,
           default_sets: we.default_sets,
           default_reps: we.default_reps,
           rest_time: we.rest_time,
           order_index: we.order_index
         };
-      }).filter(Boolean) || [];
+      }).filter(Boolean);
       
       // Create workout session
       const { data: session, error: sessionError } = await supabase

@@ -949,52 +949,7 @@ const WorkoutDashboard = () => {
             </Button>
           </div>
           
-          {/* Debug section */}
-          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-            <h3 className="font-medium mb-2">Debug Info</h3>
-            <div className="text-sm text-muted-foreground space-y-1">
-              <p>Total workouts loaded: {workouts.length}</p>
-              <p>Template workouts: {workouts.filter(w => w.is_template).length}</p>
-              <p>Custom workouts: {workouts.filter(w => !w.is_template).length}</p>
-              <p>Loading state: {loading ? 'Loading...' : 'Loaded'}</p>
-              <p>Error state: {error || 'None'}</p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={async () => {
-                  console.log('Test button clicked!');
-                  console.log('Workouts array:', workouts);
-                  console.log('Workouts length:', workouts.length);
-                  
-                  if (workouts.length > 0) {
-                    const firstWorkout = workouts[0];
-                    console.log('Testing workout:', firstWorkout);
-                    try {
-                      const workoutWithExercises = await supabase
-                        .from('workout_exercises')
-                        .select(`
-                          *,
-                          exercises (*)
-                        `)
-                        .eq('workout_id', firstWorkout.id);
-                      console.log('Workout exercises query result:', workoutWithExercises);
-                    } catch (error) {
-                      console.error('Error querying workout exercises:', error);
-                    }
-                  } else {
-                    console.log('No workouts available to test');
-                    toast({
-                      title: "Debug Info",
-                      description: "No workouts available to test. Check if workouts are loading properly.",
-                      variant: "destructive"
-                    });
-                  }
-                }}
-              >
-                Test First Workout ({workouts.length > 0 ? 'Available' : 'None'})
-              </Button>
-            </div>
-          </div>
+
         </div>
 
 

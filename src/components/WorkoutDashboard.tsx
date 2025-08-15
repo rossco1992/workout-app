@@ -663,15 +663,21 @@ const WorkoutDashboard = () => {
   const handleEndWorkout = async () => {
     if (activeWorkout && user) {
       try {
-        // Calculate actual duration (you can implement a timer for this)
-        const actualDuration = activeWorkout.estimated_duration; // For now, use estimated duration
+        // Calculate workout statistics
+        const totalExercises = activeWorkout.exercises.length;
+        const completedExercises = activeWorkout.exercises.filter(ex => ex.completed).length;
+        const totalSets = activeWorkout.exercises.reduce((sum, ex) => sum + (ex.default_sets || 3), 0);
+        const completedSets = activeWorkout.exercises.reduce((sum, ex) => sum + (ex.completedSets || 0), 0);
+        
+        // Calculate actual duration from timer if available
+        const actualDuration = isTimerRunning ? Math.ceil(elapsedTime / 60) : activeWorkout.estimated_duration;
         
         // Complete the workout session
         if (activeSession) {
           await completeWorkoutSession(
             activeSession.id,
             actualDuration,
-            "Great workout!", // Notes
+            `Completed ${completedExercises}/${totalExercises} exercises with ${completedSets} sets`, // Notes with stats
             5 // Rating
           );
         }
@@ -679,10 +685,23 @@ const WorkoutDashboard = () => {
         // Reload workout history
         await loadWorkoutHistory(user.id);
         
+        // Show comprehensive workout summary
         toast({
-          title: "Workout Complete",
-          description: "Great job! Your workout has been saved to your history.",
+          title: "Workout Complete! 🎉",
+          description: `Great job! You completed ${completedExercises}/${totalExercises} exercises with ${completedSets} sets in ${actualDuration} minutes.`,
         });
+        
+        // Log workout statistics to console for debugging
+        console.log('Workout Summary:', {
+          workoutName: activeWorkout.name,
+          totalExercises,
+          completedExercises,
+          totalSets,
+          completedSets,
+          duration: actualDuration,
+          completionRate: `${Math.round((completedExercises / totalExercises) * 100)}%`
+        });
+        
       } catch (error) {
         toast({
           title: "Error",
@@ -692,8 +711,22 @@ const WorkoutDashboard = () => {
       }
     }
     
+    // Reset workout state
     setActiveWorkout(null);
     setSelectedExercise(null);
+    setActiveSession(null);
+    
+    // Reset timer state
+    setIsTimerRunning(false);
+    setWorkoutStartTime(null);
+    setElapsedTime(0);
+    setCurrentExerciseIndex(0);
+    if (restTimerInterval) {
+      clearInterval(restTimerInterval);
+      setRestTimerInterval(null);
+    }
+    setIsRestTimerRunning(false);
+    setRestTimeRemaining(0);
   };
   
   const handleExerciseClick = (exercise: Exercise & WorkoutExercise) => {
@@ -1168,15 +1201,46 @@ const WorkoutDashboard = () => {
               {workoutHistory.slice(0, 3).map((workout) => (
                 <Card key={workout.id} className="shadow-card">
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-2">
                       <div>
                         <h3 className="font-medium">{workout.session_name || 'Workout Session'}</h3>
                         <p className="text-sm text-muted-foreground">
                           {new Date(workout.started_at).toLocaleDateString()} • {workout.actual_duration || workout.workout?.estimated_duration || 0} min
                         </p>
                       </div>
-                      <Badge variant="outline">{workout.exercise_sets?.length || 0} exercises</Badge>
+                      <Badge variant="outline">{workout.exercise_sets?.length || 0} sets</Badge>
                     </div>
+                    
+                    {/* Workout Statistics */}
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="font-semibold text-primary">
+                          {workout.exercise_sets?.length || 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Sets</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold text-green-600">
+                          {workout.notes?.includes('Completed') ? 
+                            workout.notes.match(/(\d+)\/(\d+) exercises/)?.[1] || '0' : '0'
+                          }
+                        </div>
+                        <div className="text-xs text-muted-foreground">Exercises</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold text-blue-600">
+                          {workout.rating || 'N/A'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Rating</div>
+                      </div>
+                    </div>
+                    
+                    {/* Workout Notes/Summary */}
+                    {workout.notes && workout.notes !== 'Great workout!' && (
+                      <div className="mt-2 p-2 bg-muted/50 rounded text-xs text-muted-foreground">
+                        {workout.notes}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}

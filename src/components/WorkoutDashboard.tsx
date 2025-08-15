@@ -48,7 +48,8 @@ import {
   Trash2,
   Edit,
   MoreVertical,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Square
 } from "lucide-react";
 import heroImage from "@/assets/hero-workout.jpg";
 import type { 
@@ -58,7 +59,8 @@ import type {
   ExerciseSet,
   WorkoutWithExercises,
   WorkoutSessionWithDetails,
-  ExerciseWithDefaults
+  ExerciseWithDefaults,
+  WorkoutExercise
 } from "@/integrations/supabase/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -75,6 +77,7 @@ const WorkoutDashboard = () => {
     completeWorkoutSession, 
     saveExerciseSets,
     loadWorkoutHistory,
+    loadScheduledWorkouts,
     createWorkout,
     deleteWorkout,
     refreshData
@@ -82,7 +85,7 @@ const WorkoutDashboard = () => {
   
   const [activeWorkout, setActiveWorkout] = useState<WorkoutWithExercises | null>(null);
   const [activeSession, setActiveSession] = useState<WorkoutSession | null>(null);
-  const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<ExerciseWithDefaults | null>(null);
   const [showCreateWorkout, setShowCreateWorkout] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [workoutToDelete, setWorkoutToDelete] = useState<Workout | null>(null);
@@ -96,12 +99,48 @@ const WorkoutDashboard = () => {
     exercises: [] as ExerciseWithDefaults[]
   });
   
+  // Timer state
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [workoutStartTime, setWorkoutStartTime] = useState<Date | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
+  const [isRestTimerRunning, setIsRestTimerRunning] = useState(false);
+  const [restTimeRemaining, setRestTimeRemaining] = useState(0);
+  const [restTimerInterval, setRestTimerInterval] = useState<NodeJS.Timeout | null>(null);
+  
   // Load workout history when user is authenticated
   useEffect(() => {
     if (user) {
       loadWorkoutHistory(user.id);
+      loadScheduledWorkouts(user.id);
     }
-  }, [user, loadWorkoutHistory]);
+  }, [user, loadWorkoutHistory, loadScheduledWorkouts]);
+
+  // Timer effect - update elapsed time every second
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (isTimerRunning && workoutStartTime) {
+      interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - workoutStartTime.getTime()) / 1000));
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isTimerRunning, workoutStartTime]);
+
+  // Cleanup rest timer on unmount
+  useEffect(() => {
+    return () => {
+      if (restTimerInterval) {
+        clearInterval(restTimerInterval);
+      }
+    };
+  }, [restTimerInterval]);
   
   // Periodic refresh to keep data in sync across multiple windows/tabs
   useEffect(() => {
@@ -427,6 +466,65 @@ const WorkoutDashboard = () => {
     setShowScheduleDialog(true);
   };
 
+  // Timer functions
+  const startWorkoutTimer = () => {
+    setIsTimerRunning(true);
+    setWorkoutStartTime(new Date());
+    setElapsedTime(0);
+    setCurrentExerciseIndex(0);
+  };
+
+  const stopWorkoutTimer = () => {
+    setIsTimerRunning(false);
+    setWorkoutStartTime(null);
+    setElapsedTime(0);
+    setCurrentExerciseIndex(0);
+    // Stop any running rest timer
+    if (restTimerInterval) {
+      clearInterval(restTimerInterval);
+      setRestTimerInterval(null);
+    }
+    setIsRestTimerRunning(false);
+    setRestTimeRemaining(0);
+  };
+
+  const startRestTimer = (exerciseIndex: number, restTime: number) => {
+    if (restTimerInterval) {
+      clearInterval(restTimerInterval);
+    }
+    
+    setIsRestTimerRunning(true);
+    setRestTimeRemaining(restTime);
+    setCurrentExerciseIndex(exerciseIndex);
+    
+    const interval = setInterval(() => {
+      setRestTimeRemaining(prev => {
+        if (prev <= 1) {
+          setIsRestTimerRunning(false);
+          setRestTimeRemaining(0);
+          clearInterval(interval);
+          setRestTimerInterval(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    setRestTimerInterval(interval);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatWorkoutTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const formatDateKey = (date: Date) => {
     return date.toISOString().split('T')[0]; // YYYY-MM-DD format
   };
@@ -553,8 +651,18 @@ const WorkoutDashboard = () => {
     setSelectedExercise(null);
   };
   
-  const handleExerciseClick = (exercise: Exercise) => {
-    setSelectedExercise(exercise);
+  const handleExerciseClick = (exercise: Exercise & WorkoutExercise) => {
+    setSelectedExercise(exercise as ExerciseWithDefaults);
+    
+    // If timer is running, start rest timer for this exercise
+    if (isTimerRunning && activeWorkout) {
+      const exerciseIndex = activeWorkout.exercises.findIndex(e => e.id === exercise.id);
+      if (exerciseIndex !== -1) {
+        setCurrentExerciseIndex(exerciseIndex);
+        const restTime = exercise.rest_time || 60; // Default 60 seconds
+        startRestTimer(exerciseIndex, restTime);
+      }
+    }
   };
   
   const handleSaveExerciseData = (exerciseId: string, sets: any[]) => {
@@ -661,18 +769,57 @@ const WorkoutDashboard = () => {
                 <CardTitle>Workout Timer</CardTitle>
               </CardHeader>
               <CardContent className="text-center space-y-6">
+                {/* Main Timer Display */}
                 <div className="text-6xl font-bold text-primary">
-                  {activeWorkout.estimated_duration}:00
+                  {isTimerRunning ? formatWorkoutTime(elapsedTime) : `${activeWorkout.estimated_duration}:00`}
                 </div>
+                
+                {/* Timer Controls */}
                 <div className="space-y-4">
-                  <Button size="lg" className="w-full">
-                    <Play className="h-5 w-5 mr-2" />
-                    Start Timer
-                  </Button>
+                  {!isTimerRunning ? (
+                    <Button size="lg" className="w-full" onClick={startWorkoutTimer}>
+                      <Play className="h-5 w-5 mr-2" />
+                      Start Timer
+                    </Button>
+                  ) : (
+                    <Button size="lg" variant="destructive" className="w-full" onClick={stopWorkoutTimer}>
+                      <Square className="h-5 w-5 mr-2" />
+                      Stop Timer
+                    </Button>
+                  )}
+                  
                   <div className="text-sm text-muted-foreground">
-                    Take your time and focus on proper form
+                    {isTimerRunning ? 'Timer is running - focus on your workout!' : 'Take your time and focus on proper form'}
                   </div>
                 </div>
+
+                {/* Rest Timer */}
+                {isRestTimerRunning && (
+                  <div className="pt-4 border-t">
+                    <h4 className="font-semibold mb-2 text-orange-600">Rest Timer</h4>
+                    <div className="text-3xl font-bold text-orange-600 mb-2">
+                      {formatTime(restTimeRemaining)}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Rest between sets for {activeWorkout.exercises[currentExerciseIndex]?.name}
+                    </p>
+                  </div>
+                )}
+
+                {/* Current Exercise Progress */}
+                {isTimerRunning && (
+                  <div className="pt-4 border-t">
+                    <h4 className="font-semibold mb-2">Current Exercise</h4>
+                    <div className="text-sm text-muted-foreground">
+                      {currentExerciseIndex + 1} of {activeWorkout.exercises.length}: {activeWorkout.exercises[currentExerciseIndex]?.name}
+                    </div>
+                    <div className="mt-2">
+                      <Progress value={(currentExerciseIndex / activeWorkout.exercises.length) * 100} className="h-2" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Today's Goals */}
                 <div className="pt-4 border-t">
                   <h4 className="font-semibold mb-2">Today's Goals</h4>
                   <ul className="text-sm text-muted-foreground space-y-1">

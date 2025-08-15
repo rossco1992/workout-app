@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkouts } from "@/hooks/useWorkouts";
 import { useAuth } from "@/hooks/useAuth";
@@ -59,8 +60,10 @@ import type {
   WorkoutSessionWithDetails,
   ExerciseWithDefaults
 } from "@/integrations/supabase/types";
+import { supabase } from "@/integrations/supabase/client";
 
 const WorkoutDashboard = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user, signOut } = useAuth();
   const { 
@@ -223,15 +226,54 @@ const WorkoutDashboard = () => {
       
       const createdWorkout = await createWorkout(workoutData);
       
-      // Create exercises for the workout
-      // Note: This would require additional database operations to create workout_exercises
-      // For now, we'll just create the workout and show a success message
-      // TODO: Implement workout_exercises creation when the backend supports it
-      
-      toast({
-        title: "Success",
-        description: "Workout created successfully! Note: Exercise details will be saved when backend support is added.",
-      });
+      // Create exercises and link them to the workout
+      try {
+        for (let i = 0; i < newWorkout.exercises.length; i++) {
+          const exerciseData = newWorkout.exercises[i];
+          
+          // Create the exercise
+          const exercise = await supabase
+            .from('exercises')
+            .insert({
+              name: exerciseData.name,
+              description: exerciseData.description,
+              target_muscles: exerciseData.target_muscles,
+              equipment_needed: exerciseData.equipment_needed,
+              exercise_type: exerciseData.exercise_type
+            })
+            .select()
+            .single();
+          
+          if (exercise.error) throw exercise.error;
+          
+          // Create the workout_exercise relationship
+          const workoutExercise = await supabase
+            .from('workout_exercises')
+            .insert({
+              workout_id: createdWorkout.id,
+              exercise_id: exercise.data.id,
+              order_index: i + 1,
+              default_sets: exerciseData.default_sets || 3,
+              default_reps: exerciseData.default_reps || 10,
+              rest_time: 60
+            })
+            .select()
+            .single();
+          
+          if (workoutExercise.error) throw workoutExercise.error;
+        }
+        
+        toast({
+          title: "Success",
+          description: "Workout created successfully with all exercises!",
+        });
+      } catch (exerciseError) {
+        console.error('Error creating exercises:', exerciseError);
+        toast({
+          title: "Partial Success",
+          description: "Workout created but there was an issue with exercises. You can add them manually later.",
+        });
+      }
       
       setNewWorkout({
         name: "",
@@ -501,21 +543,42 @@ const WorkoutDashboard = () => {
             <Card className="shadow-card">
               <CardHeader>
                 <CardTitle>Workout Plan</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Click on any exercise to track your sets, reps, and weight
+                </p>
               </CardHeader>
               <CardContent className="space-y-4">
                 {activeWorkout.exercises.map((exercise, index) => (
                   <div 
                     key={exercise.id} 
-                    className="p-4 border rounded-lg cursor-pointer hover:shadow-md transition-shadow"
+                    className="p-4 border rounded-lg cursor-pointer hover:shadow-md transition-shadow hover:bg-muted/50"
                     onClick={() => handleExerciseClick(exercise)}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-semibold">{index + 1}. {exercise.name}</h3>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>Sets: {exercise.default_sets || 3}</span>
+                        <span>•</span>
+                        <span>Reps: {exercise.default_reps || 10}</span>
+                        {exercise.rest_time && exercise.rest_time > 0 && (
+                          <>
+                            <span>•</span>
+                            <span>Rest: {exercise.rest_time}s</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <p className="text-sm text-muted-foreground mb-1">
-                      {exercise.target_muscles}
+                      Target: {exercise.target_muscles}
                     </p>
-                    <p className="text-sm mb-2">Target: {exercise.target_muscles}</p>
+                    {exercise.equipment_needed && (
+                      <p className="text-sm text-muted-foreground mb-1">
+                        Equipment: {exercise.equipment_needed}
+                      </p>
+                    )}
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Click to track your performance →
+                    </div>
                   </div>
                 ))}
               </CardContent>
@@ -583,7 +646,7 @@ const WorkoutDashboard = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={signOut}
+                onClick={() => signOut(() => navigate("/auth"))}
                 className="bg-white/10 text-white border-white/20 hover:bg-white/20"
               >
                 Sign Out

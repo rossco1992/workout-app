@@ -30,10 +30,19 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => {
+  const signOut = async (onSuccess?: () => void) => {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      
+      // Clear local state after successful sign out
+      setUser(null);
+      setSession(null);
+      
+      // Call optional success callback (e.g., for navigation)
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error) {
       console.error('Error signing out:', error);
     }

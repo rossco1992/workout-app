@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Dumbbell } from "lucide-react";
-import AuthTest from "@/components/AuthTest";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -171,9 +170,6 @@ const Auth = () => {
           </Tabs>
         </CardContent>
       </Card>
-      
-      {/* Debug component - remove this after fixing auth */}
-      <AuthTest />
     </div>
   );
 };

@@ -56,7 +56,8 @@ import type {
   WorkoutSession, 
   ExerciseSet,
   WorkoutWithExercises,
-  WorkoutSessionWithDetails
+  WorkoutSessionWithDetails,
+  ExerciseWithDefaults
 } from "@/integrations/supabase/types";
 
 const WorkoutDashboard = () => {
@@ -70,7 +71,9 @@ const WorkoutDashboard = () => {
     startWorkoutSession, 
     completeWorkoutSession, 
     saveExerciseSets,
-    loadWorkoutHistory
+    loadWorkoutHistory,
+    createWorkout,
+    deleteWorkout
   } = useWorkouts();
   
   const [activeWorkout, setActiveWorkout] = useState<WorkoutWithExercises | null>(null);
@@ -86,7 +89,7 @@ const WorkoutDashboard = () => {
     type: "Strength" as "Strength" | "Cardio" | "HIIT" | "Yoga",
     difficulty: "Beginner" as "Beginner" | "Intermediate" | "Advanced",
     duration: 30,
-    exercises: [] as Exercise[]
+    exercises: [] as ExerciseWithDefaults[]
   });
   
   // Load workout history when user is authenticated
@@ -155,7 +158,7 @@ const WorkoutDashboard = () => {
     setShowCreateWorkout(true);
   };
   
-  const handleSaveNewWorkout = () => {
+  const handleSaveNewWorkout = async () => {
     if (!newWorkout.name.trim()) {
       toast({
         title: "Error",
@@ -174,32 +177,80 @@ const WorkoutDashboard = () => {
       return;
     }
     
-    // TODO: Implement database workout creation
-    toast({
-      title: "Coming Soon",
-      description: "Custom workout creation will be implemented with the database!",
-    });
+    // Validate that all exercises have names
+    const exercisesWithoutNames = newWorkout.exercises.filter(ex => !ex.name.trim());
+    if (exercisesWithoutNames.length > 0) {
+      toast({
+        title: "Error",
+        description: `Please provide names for all exercises (${exercisesWithoutNames.length} missing)`,
+        variant: "destructive"
+      });
+      return;
+    }
     
-    setNewWorkout({
-      name: "",
-      type: "Strength",
-      difficulty: "Beginner", 
-      duration: 30,
-      exercises: []
-    });
-    setShowCreateWorkout(false);
+    if (!user) {
+      toast({
+        title: "Error",
+        description: "Please sign in to create a workout",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      // Create the workout
+      const workoutData = {
+        name: newWorkout.name,
+        description: `Custom workout created by ${user.email}`,
+        type: newWorkout.type,
+        difficulty: newWorkout.difficulty,
+        estimated_duration: newWorkout.duration,
+        created_by: user.id,
+        is_template: false
+      };
+      
+      const createdWorkout = await createWorkout(workoutData);
+      
+      // Create exercises for the workout
+      // Note: This would require additional database operations to create workout_exercises
+      // For now, we'll just create the workout and show a success message
+      // TODO: Implement workout_exercises creation when the backend supports it
+      
+      toast({
+        title: "Success",
+        description: "Workout created successfully! Note: Exercise details will be saved when backend support is added.",
+      });
+      
+      setNewWorkout({
+        name: "",
+        type: "Strength",
+        difficulty: "Beginner", 
+        duration: 30,
+        exercises: []
+      });
+      setShowCreateWorkout(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create workout. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
   
   const handleAddExerciseToWorkout = () => {
-    const newExercise: Exercise = {
-      id: "",
+    const newExercise: ExerciseWithDefaults = {
+      id: `temp-${Date.now()}`, // Temporary ID for local state
       name: "",
       description: "",
       target_muscles: "",
       equipment_needed: "",
       exercise_type: "",
       created_at: "",
-      updated_at: ""
+      updated_at: "",
+      default_sets: 3,
+      default_reps: 10,
+      default_weight: 0
     };
     
     setNewWorkout(prev => ({
@@ -208,7 +259,7 @@ const WorkoutDashboard = () => {
     }));
   };
   
-  const handleUpdateExerciseInWorkout = (exerciseId: string, updates: Partial<Exercise>) => {
+  const handleUpdateExerciseInWorkout = (exerciseId: string, updates: Partial<ExerciseWithDefaults>) => {
     setNewWorkout(prev => ({
       ...prev,
       exercises: prev.exercises.map(ex => 
@@ -228,16 +279,15 @@ const WorkoutDashboard = () => {
     setWorkoutToDelete(workout);
   };
 
-  const confirmDeleteWorkout = () => {
-    if (!workoutToDelete) return;
+  const confirmDeleteWorkout = async () => {
+    if (!workoutToDelete || !user) return;
 
-    // TODO: Implement database workout deletion
-    toast({
-      title: "Coming Soon",
-      description: "Workout deletion will be implemented with the database!",
-    });
-
-    setWorkoutToDelete(null);
+    try {
+      await deleteWorkout(workoutToDelete.id);
+      setWorkoutToDelete(null);
+    } catch (error) {
+      // Error handling is done in the deleteWorkout function
+    }
   };
 
   const handleImportPlan = () => {
@@ -610,7 +660,12 @@ const WorkoutDashboard = () => {
           {/* Available Workouts */}
           <div>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold">Your Workouts</h2>
+              <div>
+                <h2 className="text-2xl font-bold">Your Workouts</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {workouts.length} workout{workouts.length !== 1 ? 's' : ''} available
+                </p>
+              </div>
               <Button variant="outline" size="sm" onClick={handleImportPlan}>
                 <Plus className="h-4 w-4 mr-2" />
                 Import Plan
@@ -717,13 +772,16 @@ const WorkoutDashboard = () => {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Workout</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{workoutToDelete?.name}"? This action cannot be undone.
+                Are you sure you want to delete "{workoutToDelete?.name}"? 
+                <br /><br />
+                <strong>This action cannot be undone.</strong> The workout and all associated data will be permanently removed.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={confirmDeleteWorkout} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                Delete
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Permanently
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -752,13 +810,13 @@ interface CreateWorkoutDialogProps {
     type: "Strength" | "Cardio" | "HIIT" | "Yoga";
     difficulty: "Beginner" | "Intermediate" | "Advanced";
     duration: number;
-    exercises: Exercise[];
+    exercises: ExerciseWithDefaults[];
   };
   onSave: () => void;
   onClose: () => void;
   onUpdateWorkout: (workout: any) => void;
   onAddExercise: () => void;
-  onUpdateExercise: (exerciseId: string, updates: Partial<Exercise>) => void;
+  onUpdateExercise: (exerciseId: string, updates: Partial<ExerciseWithDefaults>) => void;
   onRemoveExercise: (exerciseId: string) => void;
 }
 
@@ -774,7 +832,7 @@ const CreateWorkoutDialog = ({
 }: CreateWorkoutDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Workout</DialogTitle>
         </DialogHeader>
@@ -840,10 +898,31 @@ const CreateWorkoutDialog = ({
             </div>
           </div>
           
+          {/* Workout Summary */}
+          {workout.name && workout.exercises.length > 0 && (
+            <div className="p-4 bg-muted/50 rounded-lg">
+              <h4 className="font-medium mb-2">Workout Summary</h4>
+              <div className="text-sm text-muted-foreground space-y-1">
+                <p><strong>Name:</strong> {workout.name}</p>
+                <p><strong>Type:</strong> {workout.type}</p>
+                <p><strong>Difficulty:</strong> {workout.difficulty}</p>
+                <p><strong>Duration:</strong> {workout.duration} minutes</p>
+                <p><strong>Exercises:</strong> {workout.exercises.length}</p>
+                <p><strong>Total Sets:</strong> {workout.exercises.reduce((total, ex) => total + ((ex as ExerciseWithDefaults).default_sets || 3), 0)}</p>
+                <p><strong>Estimated Time:</strong> ~{Math.max(workout.duration, workout.exercises.length * 5)} minutes</p>
+              </div>
+            </div>
+          )}
+          
           {/* Exercises */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-medium">Exercises</h3>
+              <div>
+                <h3 className="text-lg font-medium">Exercises</h3>
+                <p className="text-sm text-muted-foreground">
+                  {workout.exercises.length} exercise{workout.exercises.length !== 1 ? 's' : ''} added
+                </p>
+              </div>
               <Button onClick={onAddExercise} variant="outline" size="sm">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Exercise
@@ -855,9 +934,9 @@ const CreateWorkoutDialog = ({
                 No exercises added yet. Click "Add Exercise" to start building your workout.
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {workout.exercises.map((exercise, index) => (
-                  <div key={exercise.id} className="p-4 border rounded-lg space-y-3">
+                  <div key={exercise.id} className="p-4 border rounded-lg space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">Exercise {index + 1}</span>
                       <Button 
@@ -872,19 +951,86 @@ const CreateWorkoutDialog = ({
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
+                        <label className="text-sm font-medium mb-2 block">Exercise Name</label>
                         <Input
-                          placeholder="Exercise name"
+                          placeholder="e.g., Bench Press, Squats"
                           value={exercise.name}
                           onChange={(e) => onUpdateExercise(exercise.id, { name: e.target.value })}
                         />
                       </div>
                       <div>
+                        <label className="text-sm font-medium mb-2 block">Target Muscles</label>
                         <Input
-                          placeholder="Target muscles"
+                          placeholder="e.g., Chest, Legs, Back"
                           value={exercise.target_muscles}
                           onChange={(e) => onUpdateExercise(exercise.id, { target_muscles: e.target.value })}
                         />
                       </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Default Sets</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="10"
+                          placeholder="3"
+                          value={(exercise as ExerciseWithDefaults).default_sets || 3}
+                          onChange={(e) => onUpdateExercise(exercise.id, { default_sets: parseInt(e.target.value) || 3 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Default Reps</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="50"
+                          placeholder="10"
+                          value={(exercise as ExerciseWithDefaults).default_reps || 10}
+                          onChange={(e) => onUpdateExercise(exercise.id, { default_reps: parseInt(e.target.value) || 10 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Default Weight (lbs)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="1000"
+                          placeholder="0"
+                          value={(exercise as ExerciseWithDefaults).default_weight || 0}
+                          onChange={(e) => onUpdateExercise(exercise.id, { default_weight: parseInt(e.target.value) || 0 })}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Equipment Needed</label>
+                        <Input
+                          placeholder="e.g., Dumbbells, Barbell, Bodyweight"
+                          value={exercise.equipment_needed}
+                          onChange={(e) => onUpdateExercise(exercise.id, { equipment_needed: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Exercise Type</label>
+                        <Input
+                          placeholder="e.g., Compound, Isolation, Cardio"
+                          value={exercise.exercise_type}
+                          onChange={(e) => onUpdateExercise(exercise.id, { exercise_type: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Description</label>
+                      <Textarea
+                        placeholder="Optional: Add notes or instructions for this exercise"
+                        value={exercise.description}
+                        onChange={(e) => onUpdateExercise(exercise.id, { description: e.target.value })}
+                        rows={2}
+                      />
                     </div>
                   </div>
                 ))}

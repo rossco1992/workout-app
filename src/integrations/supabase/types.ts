@@ -283,8 +283,8 @@ export type Tables<
         Row: infer R
       }
       ? R
-        : never
       : never
+    : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
@@ -308,8 +308,8 @@ export type TablesInsert<
         Insert: infer I
       }
       ? I
-        : never
       : never
+    : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
@@ -333,8 +333,8 @@ export type TablesUpdate<
         Update: infer U
       }
       ? U
-        : never
       : never
+    : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
@@ -399,4 +399,11 @@ export type WorkoutSessionWithDetails = WorkoutSession & {
 
 export type ExerciseSetWithExercise = ExerciseSet & {
   exercise: Exercise
+}
+
+// Extended Exercise type for workout creation interface
+export type ExerciseWithDefaults = Exercise & {
+  default_sets?: number
+  default_reps?: number
+  default_weight?: number
 }

@@ -44,3 +44,4 @@ npm run dev
 2. Check browser console for specific error messages
 3. Verify Supabase project settings
 4. Try signing up with a new account
+

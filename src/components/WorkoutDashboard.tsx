@@ -143,15 +143,23 @@ const WorkoutDashboard = () => {
     }
 
     try {
+      console.log('Starting workout with ID:', workoutId);
+      console.log('Available workouts:', workouts);
+      
       const { session, exercises } = await startWorkoutSession(workoutId, user.id);
+      console.log('Workout session started:', session);
+      console.log('Exercises returned:', exercises);
       
       const selectedWorkout = workouts.find(w => w.id === workoutId);
+      console.log('Selected workout:', selectedWorkout);
+      
       if (selectedWorkout) {
         const workoutWithExercises: WorkoutWithExercises = {
           ...selectedWorkout,
           exercises: exercises
         };
         
+        console.log('Workout with exercises:', workoutWithExercises);
         setActiveWorkout(workoutWithExercises);
         setActiveSession(session);
         
@@ -161,6 +169,7 @@ const WorkoutDashboard = () => {
         });
       }
     } catch (error) {
+      console.error('Error starting workout:', error);
       toast({
         title: "Error",
         description: "Failed to start workout session",
@@ -228,8 +237,12 @@ const WorkoutDashboard = () => {
       
       // Create exercises and link them to the workout
       try {
+        console.log('Creating exercises for workout:', createdWorkout.id);
+        console.log('Exercises to create:', newWorkout.exercises);
+        
         for (let i = 0; i < newWorkout.exercises.length; i++) {
           const exerciseData = newWorkout.exercises[i];
+          console.log(`Creating exercise ${i + 1}:`, exerciseData);
           
           // Create the exercise
           const exercise = await supabase
@@ -244,7 +257,12 @@ const WorkoutDashboard = () => {
             .select()
             .single();
           
-          if (exercise.error) throw exercise.error;
+          if (exercise.error) {
+            console.error('Error creating exercise:', exercise.error);
+            throw exercise.error;
+          }
+          
+          console.log('Exercise created:', exercise.data);
           
           // Create the workout_exercise relationship
           const workoutExercise = await supabase
@@ -260,9 +278,15 @@ const WorkoutDashboard = () => {
             .select()
             .single();
           
-          if (workoutExercise.error) throw workoutExercise.error;
+          if (workoutExercise.error) {
+            console.error('Error creating workout_exercise:', workoutExercise.error);
+            throw workoutExercise.error;
+          }
+          
+          console.log('Workout exercise created:', workoutExercise.data);
         }
         
+        console.log('All exercises created successfully');
         toast({
           title: "Success",
           description: "Workout created successfully with all exercises!",
@@ -728,6 +752,40 @@ const WorkoutDashboard = () => {
                 <span>Refresh Data</span>
               </div>
             </Button>
+          </div>
+          
+          {/* Debug section */}
+          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+            <h3 className="font-medium mb-2">Debug Info</h3>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>Total workouts loaded: {workouts.length}</p>
+              <p>Template workouts: {workouts.filter(w => w.is_template).length}</p>
+              <p>Custom workouts: {workouts.filter(w => !w.is_template).length}</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={async () => {
+                  if (workouts.length > 0) {
+                    const firstWorkout = workouts[0];
+                    console.log('Testing workout:', firstWorkout);
+                    try {
+                      const workoutWithExercises = await supabase
+                        .from('workout_exercises')
+                        .select(`
+                          *,
+                          exercises (*)
+                        `)
+                        .eq('workout_id', firstWorkout.id);
+                      console.log('Workout exercises query result:', workoutWithExercises);
+                    } catch (error) {
+                      console.error('Error querying workout exercises:', error);
+                    }
+                  }
+                }}
+              >
+                Test First Workout
+              </Button>
+            </div>
           </div>
         </div>
 

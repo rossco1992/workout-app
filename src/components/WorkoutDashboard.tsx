@@ -144,30 +144,93 @@ const WorkoutDashboard = () => {
 
     try {
       console.log('Starting workout with ID:', workoutId);
-      console.log('Available workouts:', workouts);
       
-      const { session, exercises } = await startWorkoutSession(workoutId, user.id);
-      console.log('Workout session started:', session);
-      console.log('Exercises returned:', exercises);
-      
+      // Get the workout details
       const selectedWorkout = workouts.find(w => w.id === workoutId);
+      if (!selectedWorkout) {
+        toast({
+          title: "Error",
+          description: "Workout not found",
+          variant: "destructive"
+        });
+        return;
+      }
+      
       console.log('Selected workout:', selectedWorkout);
       
-      if (selectedWorkout) {
-        const workoutWithExercises: WorkoutWithExercises = {
-          ...selectedWorkout,
-          exercises: exercises
-        };
-        
-        console.log('Workout with exercises:', workoutWithExercises);
-        setActiveWorkout(workoutWithExercises);
-        setActiveSession(session);
-        
+      // Load workout exercises directly from the database
+      const { data: workoutExercises, error: exercisesError } = await supabase
+        .from('workout_exercises')
+        .select(`
+          *,
+          exercises (*)
+        `)
+        .eq('workout_id', workoutId)
+        .order('order_index');
+      
+      if (exercisesError) {
+        console.error('Error loading exercises:', exercisesError);
         toast({
-          title: "Starting Workout",
-          description: `Let's begin your ${selectedWorkout.name} workout!`,
+          title: "Error",
+          description: "Failed to load workout exercises",
+          variant: "destructive"
         });
+        return;
       }
+      
+      console.log('Workout exercises loaded:', workoutExercises);
+      
+      // Transform the data to match the expected format
+      const exercises = workoutExercises?.map(we => ({
+        ...we.exercises,
+        ...we
+      })) || [];
+      
+      console.log('Transformed exercises:', exercises);
+      
+      // Create workout session
+      const { data: session, error: sessionError } = await supabase
+        .from('workout_sessions')
+        .insert({
+          workout_id: workoutId,
+          user_id: user.id,
+          session_name: selectedWorkout.name,
+          started_at: new Date().toISOString(),
+          completed_at: null,
+          actual_duration: null,
+          notes: null,
+          rating: null
+        })
+        .select()
+        .single();
+      
+      if (sessionError) {
+        console.error('Error creating session:', sessionError);
+        toast({
+          title: "Error",
+          description: "Failed to create workout session",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      console.log('Workout session created:', session);
+      
+      // Set the active workout with exercises
+      const workoutWithExercises: WorkoutWithExercises = {
+        ...selectedWorkout,
+        exercises: exercises
+      };
+      
+      console.log('Setting active workout:', workoutWithExercises);
+      setActiveWorkout(workoutWithExercises);
+      setActiveSession(session);
+      
+      toast({
+        title: "Starting Workout",
+        description: `Let's begin your ${selectedWorkout.name} workout!`,
+      });
+      
     } catch (error) {
       console.error('Error starting workout:', error);
       toast({
@@ -761,10 +824,16 @@ const WorkoutDashboard = () => {
               <p>Total workouts loaded: {workouts.length}</p>
               <p>Template workouts: {workouts.filter(w => w.is_template).length}</p>
               <p>Custom workouts: {workouts.filter(w => !w.is_template).length}</p>
+              <p>Loading state: {loading ? 'Loading...' : 'Loaded'}</p>
+              <p>Error state: {error || 'None'}</p>
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={async () => {
+                  console.log('Test button clicked!');
+                  console.log('Workouts array:', workouts);
+                  console.log('Workouts length:', workouts.length);
+                  
                   if (workouts.length > 0) {
                     const firstWorkout = workouts[0];
                     console.log('Testing workout:', firstWorkout);
@@ -780,10 +849,17 @@ const WorkoutDashboard = () => {
                     } catch (error) {
                       console.error('Error querying workout exercises:', error);
                     }
+                  } else {
+                    console.log('No workouts available to test');
+                    toast({
+                      title: "Debug Info",
+                      description: "No workouts available to test. Check if workouts are loading properly.",
+                      variant: "destructive"
+                    });
                   }
                 }}
               >
-                Test First Workout
+                Test First Workout ({workouts.length > 0 ? 'Available' : 'None'})
               </Button>
             </div>
           </div>

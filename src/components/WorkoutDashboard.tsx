@@ -207,6 +207,10 @@ const WorkoutDashboard = () => {
         .eq('workout_id', workoutId)
         .order('order_index');
       
+      console.log('DEBUG: workoutId being queried:', workoutId);
+      console.log('DEBUG: workoutExercises result:', workoutExercises);
+      console.log('DEBUG: exercisesError:', exercisesError);
+      
       if (exercisesError) {
         console.error('Error loading workout exercises:', exercisesError);
         toast({
@@ -218,6 +222,13 @@ const WorkoutDashboard = () => {
       }
       
       if (!workoutExercises || workoutExercises.length === 0) {
+        console.log('DEBUG: No workout exercises found for workout ID:', workoutId);
+        // Let's check what's actually in the workout_exercises table
+        const { data: allWorkoutExercises } = await supabase
+          .from('workout_exercises')
+          .select('*');
+        console.log('DEBUG: All workout_exercises in database:', allWorkoutExercises);
+        
         toast({
           title: "No Exercises Found",
           description: "This workout doesn't have any exercises assigned to it.",

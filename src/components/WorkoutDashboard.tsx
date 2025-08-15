@@ -214,10 +214,19 @@ const WorkoutDashboard = () => {
       }
       
       // Transform the data to match the expected format
-      const exercises = workoutExercises?.map(we => ({
-        ...we.exercises,
-        ...we
-      })) || [];
+      const exercises = workoutExercises?.map(we => {
+        if (!we.exercises) {
+          console.error('Exercise data missing for workout exercise:', we);
+          return null;
+        }
+        return {
+          ...we.exercises,
+          default_sets: we.default_sets,
+          default_reps: we.default_reps,
+          rest_time: we.rest_time,
+          order_index: we.order_index
+        };
+      }).filter(Boolean) || [];
       
       // Create workout session
       const { data: session, error: sessionError } = await supabase

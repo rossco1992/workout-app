@@ -73,7 +73,8 @@ const WorkoutDashboard = () => {
     saveExerciseSets,
     loadWorkoutHistory,
     createWorkout,
-    deleteWorkout
+    deleteWorkout,
+    refreshData
   } = useWorkouts();
   
   const [activeWorkout, setActiveWorkout] = useState<WorkoutWithExercises | null>(null);
@@ -98,6 +99,17 @@ const WorkoutDashboard = () => {
       loadWorkoutHistory(user.id);
     }
   }, [user, loadWorkoutHistory]);
+  
+  // Periodic refresh to keep data in sync across multiple windows/tabs
+  useEffect(() => {
+    if (user) {
+      const refreshInterval = setInterval(() => {
+        refreshData();
+      }, 30000); // Refresh every 30 seconds
+      
+      return () => clearInterval(refreshInterval);
+    }
+  }, [user, refreshData]);
   
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
@@ -647,10 +659,10 @@ const WorkoutDashboard = () => {
               </div>
             </Button>
             
-            <Button variant="outline" size="lg" className="h-20" onClick={handleProgressReport}>
+            <Button variant="outline" size="lg" className="h-20" onClick={refreshData}>
               <div className="text-center">
                 <TrendingUp className="h-6 w-6 mx-auto mb-1" />
-                <span>Progress Report</span>
+                <span>Refresh Data</span>
               </div>
             </Button>
           </div>

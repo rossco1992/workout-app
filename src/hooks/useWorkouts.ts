@@ -60,7 +60,10 @@ export function useWorkouts() {
   const createWorkout = useCallback(async (workoutData: Omit<Workout, 'id' | 'created_at' | 'updated_at'>) => {
     try {
       const newWorkout = await WorkoutService.createWorkout(workoutData)
-      setWorkouts(prev => [...prev, newWorkout])
+      
+      // Refresh the workouts list from the database to ensure all windows stay in sync
+      await loadInitialData()
+      
       toast({
         title: "Success",
         description: "Workout created successfully!"
@@ -75,7 +78,7 @@ export function useWorkouts() {
       })
       throw err
     }
-  }, [toast])
+  }, [toast, loadInitialData])
 
   const updateWorkout = useCallback(async (workoutId: string, updates: Partial<Workout>) => {
     try {
@@ -100,7 +103,10 @@ export function useWorkouts() {
   const deleteWorkout = useCallback(async (workoutId: string) => {
     try {
       await WorkoutService.deleteWorkout(workoutId)
-      setWorkouts(prev => prev.filter(w => w.id !== workoutId))
+      
+      // Refresh the workouts list from the database to ensure all windows stay in sync
+      await loadInitialData()
+      
       toast({
         title: "Success",
         description: "Workout deleted successfully!"
@@ -114,7 +120,7 @@ export function useWorkouts() {
       })
       throw err
     }
-  }, [toast])
+  }, [toast, loadInitialData])
 
   // Workout Sessions
   const startWorkoutSession = useCallback(async (workoutId: string, userId: string, sessionName?: string) => {
